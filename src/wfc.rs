@@ -6,12 +6,18 @@ pub struct Wfc {
     stack: Vec<Board>,
 }
 
+pub enum StepResult {
+    Complete(Board),
+    InProgress(Board),
+    Impossible,
+}
+
 impl Wfc {
     pub fn init(&mut self, b: Board) {
         self.stack = vec![b];
     }
 
-    pub fn step(&mut self) -> (Board, bool) {
+    pub fn step(&mut self) -> StepResult {
         let b = self.stack.last().unwrap().clone();
         let mut posibilities = b
             .get_uncollapsed()
@@ -19,7 +25,7 @@ impl Wfc {
             .map(|(i, c)| (i, c.entropy()))
             .collect::<Vec<_>>();
         if posibilities.is_empty() {
-            return (b.clone(), true);
+            return StepResult::Complete(b);
         }
 
         posibilities.sort_by(|(_, e1), (_, e2)| e1.cmp(&e2));
@@ -40,6 +46,9 @@ impl Wfc {
             }
         }
 
-        (self.stack.last().unwrap().clone(), false)
+        match self.stack.last() {
+            Some(b) => StepResult::InProgress(*b),
+            None => StepResult::Impossible,
+        }
     }
 }

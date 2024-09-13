@@ -40,6 +40,19 @@ impl AppData {
         s
     }
 
+    fn from_data(data: String) -> Self {
+        let mut s = Self {
+            board: data.parse().unwrap(),
+            ui: Ui::new().unwrap(),
+            wfc: Wfc::default(),
+
+            tickctl_tx: channel().0,
+        };
+
+        s.toggle_help_ui();
+        s
+    }
+
     fn toggle_help_ui(&mut self) {
         let help = || {
             print!(
@@ -56,10 +69,10 @@ impl AppData {
             )
         };
 
-        if self.ui.has((0, 39)) {
-            self.ui.remove_msg((0, 39));
+        if self.ui.has((0, 40)) {
+            self.ui.remove_msg((0, 40));
         } else {
-            self.ui.add_msg((0, 39), help);
+            self.ui.add_msg((0, 40), help);
         }
     }
 }
@@ -75,6 +88,15 @@ impl App {
     pub fn new() -> Self {
         Self {
             data: AppData::new(),
+            state: Box::new(InputState::default()),
+
+            exit: false,
+        }
+    }
+
+    pub fn from_data(data: String) -> Self {
+        Self {
+            data: AppData::from_data(data),
             state: Box::new(InputState::default()),
 
             exit: false,

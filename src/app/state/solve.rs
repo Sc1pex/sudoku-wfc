@@ -1,3 +1,5 @@
+use crate::wfc::StepResult;
+
 use super::*;
 
 pub struct SolveState {
@@ -24,13 +26,21 @@ impl Drop for SolveState {
 
 impl State for SolveState {
     fn handle_tick_event(&mut self, data: &mut AppData) -> Option<Box<dyn State>> {
-        let (b, done) = data.wfc.step();
-        data.board = b;
-
-        if done {
-            data.ui.add_msg((0, 38), || print!("Solved!"));
-            return Some(Box::new(InputState::default()));
+        let res = data.wfc.step();
+        match res {
+            StepResult::Complete(b) => {
+                data.board = b;
+                data.ui.add_msg((0, 38), || print!("Solved!"));
+                return Some(Box::new(InputState::default()));
+            }
+            StepResult::InProgress(b) => data.board = b,
+            StepResult::Impossible => {
+                data.ui.add_msg((0, 38), || print!("No solution!"));
+                data.board.clear_maybe();
+                return Some(Box::new(InputState::default()));
+            }
         }
+
         None
     }
 }

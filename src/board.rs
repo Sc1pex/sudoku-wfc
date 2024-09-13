@@ -2,6 +2,7 @@ use crossterm::style::Stylize;
 use std::{
     fmt::Display,
     ops::{Index, IndexMut},
+    str::FromStr,
 };
 
 #[derive(Default, PartialEq, Eq, Clone, Copy)]
@@ -274,8 +275,42 @@ impl Index<usize> for Board {
     }
 }
 
+impl IndexMut<(usize, usize)> for Board {
+    fn index_mut(&mut self, i: (usize, usize)) -> &mut Self::Output {
+        &mut self.cells[i.0 * 9 + i.1]
+    }
+}
+
 impl IndexMut<usize> for Board {
     fn index_mut(&mut self, i: usize) -> &mut Self::Output {
         &mut self.cells[i]
+    }
+}
+
+impl FromStr for Board {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut board = Board::default();
+
+        for (i, l) in s.lines().enumerate() {
+            for (j, c) in l.chars().enumerate() {
+                match c {
+                    '1'..='9' => {
+                        if i > 8 || j > 8 {
+                            return Err(format!(
+                                "Expected max 9 characters per line and max 9 lines"
+                            ));
+                        }
+                        board[(i, j)] = Cell::Good(c as u8 - b'0');
+                    }
+                    ' ' => (),
+                    _ => return Err(format!("Unexpected character {}", c)),
+                }
+            }
+        }
+        board.calc_cell_states();
+
+        Ok(board)
     }
 }
