@@ -1,5 +1,8 @@
 use crossterm::style::Stylize;
-use std::{fmt::Display, ops::Index};
+use std::{
+    fmt::Display,
+    ops::{Index, IndexMut},
+};
 
 #[derive(Default, PartialEq, Eq, Clone, Copy)]
 pub enum Cell {
@@ -17,11 +20,37 @@ impl Cell {
         matches!(self, Cell::Maybe(_))
     }
 
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Cell::Empty)
+    }
+
     pub fn maybe_get_num(&self, num: u8) -> bool {
         if let Cell::Maybe(m) = self {
             (m & (1 << num as u16)) != 0
         } else {
             false
+        }
+    }
+
+    pub fn entropy(&self) -> u8 {
+        match self {
+            Cell::Maybe(v) => v.count_ones() as u8,
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn maybe_values(&self) -> Vec<u8> {
+        match self {
+            Cell::Maybe(_v) => (1..=9).filter(|&i| self.maybe_get_num(i)).collect(),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn maybe_unset(&mut self, value: u8) {
+        let mask = !(1 << value);
+        match self {
+            Cell::Maybe(m) => *m = *m & mask,
+            _ => (),
         }
     }
 }
@@ -61,14 +90,22 @@ impl Display for Cell {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy)]
 pub struct Board {
-    cells: [[Cell; 9]; 9],
+    cells: [Cell; 81],
+}
+
+impl Default for Board {
+    fn default() -> Self {
+        Self {
+            cells: [Cell::default(); 81],
+        }
+    }
 }
 
 impl Board {
     pub fn set_cell(&mut self, idx: (usize, usize), value: Option<u8>) {
-        self.cells[idx.0][idx.1] = match value {
+        self.cells[idx.0 * 9 + idx.1] = match value {
             Some(v) => Cell::Good(v),
             None => Cell::Empty,
         };
@@ -76,59 +113,107 @@ impl Board {
     }
 
     pub fn can_solve(&self) -> bool {
-        for i in 0..9 {
-            for j in 0..9 {
-                if matches!(self.cells[i][j], Cell::Bad(_)) {
-                    return false;
-                }
+        for i in 0..81 {
+            if matches!(self.cells[i], Cell::Bad(_)) {
+                return false;
             }
         }
         true
     }
 
     pub fn clear_maybe(&mut self) {
-        for i in 0..9 {
-            for j in 0..9 {
-                if matches!(self[(i, j)], Cell::Maybe(_) | Cell::Collapsed(_)) {
-                    self.cells[i][j] = Cell::Empty;
-                }
+        for i in 0..81 {
+            if matches!(self.cells[i], Cell::Maybe(_) | Cell::Collapsed(_)) {
+                self.cells[i] = Cell::Empty;
             }
         }
     }
 
     pub fn clear_all(&mut self) {
+        for i in 0..81 {
+            self.cells[i] = Cell::Empty;
+        }
+    }
+
+    pub fn get_uncollapsed(&self) -> Vec<(usize, Cell)> {
+        self.cells
+            .clone()
+            .into_iter()
+            .enumerate()
+            .filter(|(_, c)| c.is_maybe())
+            .collect()
+    }
+
+    pub fn collapse(&mut self, index: usize, value: u8) {
+        self.cells[index] = Cell::Collapsed(value);
+
+        let cell = (index / 9, index % 9);
+        let square = ((cell.0 / 3) * 3, (cell.1 / 3) * 3);
         for i in 0..9 {
-            for j in 0..9 {
-                self.cells[i][j] = Cell::Empty;
+            let idx = cell.0 * 9 + i;
+            self.cells[idx].maybe_unset(value);
+
+            let idx = i * 9 + cell.1;
+            self.cells[idx].maybe_unset(value);
+
+            let idx = (square.0 + i / 3) * 9 + square.1 + i % 3;
+            self.cells[idx].maybe_unset(value);
+        }
+    }
+
+    pub fn init_maybe(&mut self) {
+        for i in 0..81 {
+            if !self.cells[i].is_empty() {
+                continue;
             }
+
+            let mut value = Cell::Maybe(0b1111111110);
+
+            let cell = (i / 9, i % 9);
+            let square = ((cell.0 / 3) * 3, (cell.1 / 3) * 3);
+            self.row(cell.0).for_each(|c| {
+                if let Some(v) = c.value() {
+                    value.maybe_unset(v)
+                }
+            });
+            self.col(cell.1).for_each(|c| {
+                if let Some(v) = c.value() {
+                    value.maybe_unset(v)
+                }
+            });
+            self.square(square).for_each(|c| {
+                if let Some(v) = c.value() {
+                    value.maybe_unset(v)
+                }
+            });
+
+            self.cells[i] = value;
         }
     }
 }
 
 impl Board {
     fn calc_cell_states(&mut self) {
-        for i in 0..9 {
-            for j in 0..9 {
-                self.cells[i][j].make_good();
-            }
+        for i in 0..81 {
+            self.cells[i].make_good();
         }
 
         for i in 0..9 {
             if !self.is_row_ok(i) {
                 for j in 0..9 {
-                    self.cells[i][j].make_bad();
+                    self.cells[i * 9 + j].make_bad();
                 }
             }
             if !self.is_col_ok(i) {
                 for j in 0..9 {
-                    self.cells[j][i].make_bad();
+                    self.cells[j * 9 + i].make_bad();
                 }
             }
             let square_off = ((i / 3) * 3, (i % 3) * 3);
             if !self.is_square_ok(square_off) {
                 for j in 0..9 {
                     let (i, j) = (j / 3 + square_off.0, j % 3 + square_off.1);
-                    self.cells[i][j].make_bad();
+                    self.cells[i * 9 + j].make_bad();
                 }
             }
         }
@@ -177,6 +262,20 @@ impl Index<(usize, usize)> for Board {
     type Output = Cell;
 
     fn index(&self, i: (usize, usize)) -> &Self::Output {
-        &self.cells[i.0][i.1]
+        &self.cells[i.0 * 9 + i.1]
+    }
+}
+
+impl Index<usize> for Board {
+    type Output = Cell;
+
+    fn index(&self, i: usize) -> &Self::Output {
+        &self.cells[i]
+    }
+}
+
+impl IndexMut<usize> for Board {
+    fn index_mut(&mut self, i: usize) -> &mut Self::Output {
+        &mut self.cells[i]
     }
 }

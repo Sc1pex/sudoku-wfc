@@ -4,6 +4,7 @@ use std::io;
 mod app;
 mod board;
 mod ui;
+mod wfc;
 
 fn main() -> io::Result<()> {
     let mut app = App::new();
